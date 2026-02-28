@@ -9,7 +9,7 @@ function generateTrackingId() {
 // Add tracking pixel to email HTML
 function addTrackingPixel(htmlContent, trackingId) {
   // Use production URL for tracking - Gmail needs to be able to access this
-  const baseUrl = process.env.BASE_URL || process.env.BACKEND_URL || 'http://localhost:5000';
+  const baseUrl = process.env.BASE_URL || process.env.BACKEND_URL || 'https://crmbackend-469714.el.r.appspot.com';
 
   // Enhanced tracking pixel with better HTML structure and meta tags
   const trackingPixel = `
@@ -62,7 +62,7 @@ function addTrackingPixel(htmlContent, trackingId) {
 
 // Convert links to tracking links
 function addClickTracking(htmlContent, trackingId) {
-  const baseUrl = process.env.BASE_URL || process.env.BACKEND_URL || 'http://localhost:5000';
+  const baseUrl = process.env.BASE_URL || process.env.BACKEND_URL || 'https://crmbackend-469714.el.r.appspot.com';
 
   // Replace all href links with tracking links
   return htmlContent.replace(

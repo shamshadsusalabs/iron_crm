@@ -159,9 +159,6 @@ const ManageContactsModalContent = ({
     <div className="space-y-4">
       <div className="bg-blue-50 p-4 rounded-lg">
         <Text strong>List: {list.name}</Text>
-        <div className="text-sm text-gray-600 mt-1">
-          {list.totalContacts} total contacts in this list
-        </div>
       </div>
 
       <div>

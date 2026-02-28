@@ -20,7 +20,8 @@ import {
   contactListApi,
   templateApi,
   followUpApi,
-  catalogApi
+  catalogApi,
+  analyticsApi
 } from '../libs/follow-up-api'
 
 interface FollowUpContextType {
@@ -28,6 +29,7 @@ interface FollowUpContextType {
   campaigns: Campaign[]
   contacts: Contact[]
   contactStats: any // Enhanced stats
+  dashboardStats: any
   contactLists: ContactList[]
   templates: Template[]
   followUps: FollowUp[]
@@ -36,6 +38,7 @@ interface FollowUpContextType {
 
   // Loading states
   campaignsLoading: boolean
+  dashboardStatsLoading: boolean
   contactsLoading: boolean
   contactListsLoading: boolean
   templatesLoading: boolean
@@ -58,6 +61,7 @@ interface FollowUpContextType {
   updateCampaign: (id: string, data: Partial<CreateCampaignData>) => Promise<Campaign>
   deleteCampaign: (id: string) => Promise<void>
   startCampaign: (id: string) => Promise<Campaign>
+  restartCampaign: (id: string, options?: { resetStats?: boolean; autoStart?: boolean }) => Promise<Campaign>
   loadCampaigns: (page?: number, limit?: number) => Promise<void>
   updateCampaignStats: (campaignId: string, stats: any) => void
 
@@ -66,7 +70,7 @@ interface FollowUpContextType {
   updateContact: (id: string, data: Partial<CreateContactData>) => Promise<Contact>
   deleteContact: (id: string) => Promise<void>
   bulkCreateContacts: (contacts: CreateContactData[]) => Promise<Contact[]>
-  loadContacts: (page?: number, limit?: number) => Promise<void>
+  loadContacts: (page?: number, limit?: number, search?: string) => Promise<void>
   loadContactStats: () => Promise<void>
 
   // Contact List actions
@@ -86,6 +90,7 @@ interface FollowUpContextType {
 
   // Catalog actions
   loadCatalogItems: (page?: number, limit?: number) => Promise<void>
+  loadDashboardStats: () => Promise<void>
 
   // Follow-up actions
   loadFollowUps: (page?: number, limit?: number) => Promise<void>
@@ -111,6 +116,7 @@ export const FollowUpProvider = ({ children }: FollowUpProviderProps) => {
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [contacts, setContacts] = useState<Contact[]>([])
   const [contactStats, setContactStats] = useState<any>(null)
+  const [dashboardStats, setDashboardStats] = useState<any>(null)
   const [contactLists, setContactLists] = useState<ContactList[]>([])
   const [templates, setTemplates] = useState<Template[]>([])
   const [followUps, setFollowUps] = useState<FollowUp[]>([])
@@ -119,6 +125,7 @@ export const FollowUpProvider = ({ children }: FollowUpProviderProps) => {
 
   // Loading states
   const [campaignsLoading, setCampaignsLoading] = useState(false)
+  const [dashboardStatsLoading, setDashboardStatsLoading] = useState(false)
   const [contactsLoading, setContactsLoading] = useState(false)
   const [contactListsLoading, setContactListsLoading] = useState(false)
   const [templatesLoading, setTemplatesLoading] = useState(false)
@@ -153,6 +160,12 @@ export const FollowUpProvider = ({ children }: FollowUpProviderProps) => {
 
   const startCampaign = useCallback(async (id: string): Promise<Campaign> => {
     const campaign = await campaignApi.start(id)
+    setCampaigns(prev => prev.map(c => c._id === id ? campaign : c))
+    return campaign
+  }, [])
+
+  const restartCampaign = useCallback(async (id: string, options?: { resetStats?: boolean; autoStart?: boolean }): Promise<Campaign> => {
+    const campaign = await campaignApi.restart(id, options)
     setCampaigns(prev => prev.map(c => c._id === id ? campaign : c))
     return campaign
   }, [])
@@ -204,10 +217,10 @@ export const FollowUpProvider = ({ children }: FollowUpProviderProps) => {
     return contactsArray
   }, [])
 
-  const loadContacts = useCallback(async (page = 1, limit = 200): Promise<void> => {
+  const loadContacts = useCallback(async (page = 1, limit = 200, search = ""): Promise<void> => {
     setContactsLoading(true)
     try {
-      const { contacts: newContacts, pagination } = await contactApi.getAll(page, limit)
+      const { contacts: newContacts, pagination } = await contactApi.getAll(page, limit, search)
       setContacts(newContacts)
       setContactsPagination(pagination)
     } catch (error) {
@@ -345,6 +358,18 @@ export const FollowUpProvider = ({ children }: FollowUpProviderProps) => {
     }
   }, [])
 
+  const loadDashboardStats = useCallback(async (): Promise<void> => {
+    setDashboardStatsLoading(true)
+    try {
+      const stats = await analyticsApi.getDashboardStats()
+      setDashboardStats(stats)
+    } catch (error) {
+      console.error('Failed to load dashboard stats:', error)
+    } finally {
+      setDashboardStatsLoading(false)
+    }
+  }, [])
+
   // Load initial data based on current section
   useEffect(() => {
     switch (currentSection) {
@@ -355,6 +380,7 @@ export const FollowUpProvider = ({ children }: FollowUpProviderProps) => {
         loadTemplates()
         loadContactLists()
         loadCatalogItems()
+        loadDashboardStats()
         break
       case 'campaigns':
         loadCampaigns()
@@ -379,6 +405,7 @@ export const FollowUpProvider = ({ children }: FollowUpProviderProps) => {
     campaigns,
     contacts,
     contactStats,
+    dashboardStats,
     contactLists,
     templates,
     followUps,
@@ -387,6 +414,7 @@ export const FollowUpProvider = ({ children }: FollowUpProviderProps) => {
 
     // Loading states
     campaignsLoading,
+    dashboardStatsLoading,
     contactsLoading,
     contactListsLoading,
     templatesLoading,
@@ -409,6 +437,7 @@ export const FollowUpProvider = ({ children }: FollowUpProviderProps) => {
     updateCampaign,
     deleteCampaign,
     startCampaign,
+    restartCampaign,
     loadCampaigns,
     updateCampaignStats,
 
@@ -437,6 +466,7 @@ export const FollowUpProvider = ({ children }: FollowUpProviderProps) => {
 
     // Catalog actions
     loadCatalogItems,
+    loadDashboardStats,
 
     // Follow-up actions
     loadFollowUps,

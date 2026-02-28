@@ -130,6 +130,12 @@ export default function FollowUpTemplates() {
       render: (date: Date) => new Date(date).toLocaleDateString(),
     },
     {
+      title: 'Updated',
+      dataIndex: 'updatedAt',
+      key: 'updatedAt',
+      render: (date: Date) => date ? new Date(date).toLocaleDateString() : '-',
+    },
+    {
       title: 'Actions',
       key: 'actions',
       render: (record: Template) => (

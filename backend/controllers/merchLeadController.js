@@ -7,6 +7,7 @@ async function createLead(req, res) {
     const userId = req.userId
     const { customer, email = '', status = 'Follow-up', priority = 'Medium', lastContact, nextAction, notes = '', interestedProducts = [] } = req.body
     if (!customer) return res.status(400).json({ success: false, message: 'customer is required' })
+    if (!email) return res.status(400).json({ success: false, message: 'email is required' })
 
     // Check for existing lead with same email for this user
     if (email) {
@@ -39,11 +40,14 @@ async function createLead(req, res) {
 async function listLeads(req, res) {
   try {
     const userId = req.userId
-    const { page = 1, limit = 10, search = '', status = '', priority = '', startDate = '', endDate = '' } = req.query
+    const { page = 1, limit = 10, search = '', status = '', priority = '', product = '', startDate = '', endDate = '' } = req.query
 
     const query = { createdBy: userId }
     if (search) {
-      query.customer = { $regex: search, $options: 'i' }
+      query.$or = [
+        { customer: { $regex: search, $options: 'i' } },
+        { email: { $regex: search, $options: 'i' } }
+      ]
     }
     // status can be a single value, CSV string, or array
     if (status) {
@@ -74,6 +78,11 @@ async function listLeads(req, res) {
         if (priorities.length === 1) query.priority = priorities[0]
         else query.priority = { $in: priorities }
       }
+    }
+    // product filter (interestedProducts)
+    if (product) {
+      const products = product.split(',').map(s => s.trim()).filter(Boolean)
+      if (products.length > 0) query.interestedProducts = { $in: products }
     }
     if (startDate || endDate) {
       query.lastContact = {}
@@ -145,10 +154,56 @@ async function deleteLead(req, res) {
   }
 }
 
+// Get filtered emails only (lightweight - for bulk compose)
+async function getFilteredEmails(req, res) {
+  try {
+    const userId = req.userId
+    const { status, priority, product, search } = req.query
+    const MAX_EMAILS = 5000
+
+    const query = { createdBy: userId, email: { $ne: '' } }
+
+    if (status) {
+      const statuses = status.split(',').map(s => s.trim()).filter(Boolean)
+      if (statuses.length === 1) query.status = statuses[0]
+      else if (statuses.length > 1) query.status = { $in: statuses }
+    }
+
+    if (priority) {
+      const priorities = priority.split(',').map(s => s.trim()).filter(Boolean)
+      if (priorities.length === 1) query.priority = priorities[0]
+      else if (priorities.length > 1) query.priority = { $in: priorities }
+    }
+
+    if (product) {
+      const products = product.split(',').map(s => s.trim()).filter(Boolean)
+      query.interestedProducts = { $in: products }
+    }
+
+    if (search) {
+      // If user provided a search term, filter leads by matching customer OR email
+      query.$or = [
+        { customer: { $regex: search, $options: 'i' } },
+        { email: { $regex: search, $options: 'i' } }
+      ]
+    }
+
+    const leads = await Lead.find(query).select('email').limit(MAX_EMAILS).lean()
+    const emails = leads.map(l => l.email).filter(Boolean)
+    const total = await Lead.countDocuments(query)
+
+    return res.json({ success: true, emails, total, capped: total > MAX_EMAILS })
+  } catch (error) {
+    logger.error('Error fetching filtered emails:', error)
+    return res.status(500).json({ success: false, message: 'Failed to fetch emails', error: error.message })
+  }
+}
+
 module.exports = {
   createLead,
   listLeads,
   getLeadById,
   updateLead,
   deleteLead,
+  getFilteredEmails,
 }

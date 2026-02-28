@@ -26,7 +26,13 @@ exports.login = async (req, res, next) => {
     const { email, password } = req.body;
 
     const admin = await Admin.findOne({ email });
-    if (!admin || !(await admin.comparePassword(password))) {
+    if (!admin) {
+      return res.status(401).json({ message: 'Invalid credentials' });
+    }
+
+    const isMatch = await admin.comparePassword(password);
+
+    if (!isMatch) {
       return res.status(401).json({ message: 'Invalid credentials' });
     }
 

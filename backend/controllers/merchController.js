@@ -5,9 +5,10 @@ const { generateAccessToken, generateRefreshToken } = require('../utils/generate
 const otpService = require('../services/otpService')
 
 // Step 1: Request OTP (validates credentials first, then sends OTP to admin)
+// If deviceFingerprint is present and trusted, skip OTP entirely
 exports.requestOTP = async (req, res) => {
   try {
-    const { email, password } = req.body
+    const { email, password, deviceFingerprint, deviceInfo } = req.body
     if (!email || !password) {
       return res.status(400).json({ message: 'Email and password are required' })
     }
@@ -35,6 +36,42 @@ exports.requestOTP = async (req, res) => {
       return res.status(403).json({ message: 'Account inactive. Please contact admin.' })
     }
 
+    // ===== TRUSTED DEVICE CHECK =====
+    if (deviceFingerprint) {
+      const isTrusted = await otpService.isDeviceTrusted(user._id, deviceFingerprint)
+      if (isTrusted) {
+        console.log('[merch.requestOTP] Trusted device detected, skipping OTP for:', lookupEmail)
+
+        // Update lastLogin
+        user.lastLogin = new Date()
+        await user.save()
+
+        // Issue tokens directly
+        const role = 'merch'
+        const accessToken = generateAccessToken(user._id, role)
+        const refreshToken = generateRefreshToken(user._id, role)
+
+        res.cookie('merchRefreshToken', refreshToken, {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: process.env.NODE_ENV === 'production' ? 'None' : 'Lax',
+          maxAge: 7 * 24 * 60 * 60 * 1000,
+        })
+
+        const safe = user.toObject()
+        delete safe.password
+
+        return res.status(200).json({
+          otpRequired: false,
+          message: 'Trusted device — logged in directly',
+          accessToken,
+          refreshToken,
+          user: safe,
+        })
+      }
+    }
+    // ===== END TRUSTED DEVICE CHECK =====
+
     // Generate and store OTP
     const otp = otpService.storeOTP(lookupEmail, user._id)
 
@@ -44,6 +81,7 @@ exports.requestOTP = async (req, res) => {
     console.log('[merch.requestOTP] OTP sent to admin for:', lookupEmail)
 
     return res.status(200).json({
+      otpRequired: true,
       message: 'OTP sent to admin for verification',
       expiresIn: otpService.OTP_EXPIRY_MINUTES * 60, // seconds
       email: lookupEmail,
@@ -55,9 +93,10 @@ exports.requestOTP = async (req, res) => {
 }
 
 // Step 2: Verify OTP and complete login
+// If trustDevice flag is set, save device as trusted
 exports.verifyOTP = async (req, res) => {
   try {
-    const { email, otp } = req.body
+    const { email, otp, trustDevice: shouldTrustDevice, deviceFingerprint, deviceInfo } = req.body
     if (!email || !otp) {
       return res.status(400).json({ message: 'Email and OTP are required' })
     }
@@ -87,6 +126,18 @@ exports.verifyOTP = async (req, res) => {
     const accessToken = generateAccessToken(user._id, role)
     const refreshToken = generateRefreshToken(user._id, role)
     console.log('[merch.verifyOTP] Login successful for userId:', user._id.toString())
+
+    // ===== SAVE TRUSTED DEVICE =====
+    if (shouldTrustDevice && deviceFingerprint) {
+      try {
+        await otpService.trustDevice(user._id, deviceFingerprint, deviceInfo || 'Unknown Device')
+        console.log('[merch.verifyOTP] Device trusted for userId:', user._id.toString())
+      } catch (trustErr) {
+        // Don't fail login if trust save fails
+        console.error('[merch.verifyOTP] Failed to trust device:', trustErr.message)
+      }
+    }
+    // ===== END SAVE TRUSTED DEVICE =====
 
     res.cookie('merchRefreshToken', refreshToken, {
       httpOnly: true,

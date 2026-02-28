@@ -743,10 +743,47 @@ async function createContact(contactData) {
   try {
     const contact = new Contact(contactData)
     await contact.save()
+
+    // Add to lists and increment counts
+    if (contact.listIds && contact.listIds.length > 0) {
+      await ContactList.updateMany(
+        { _id: { $in: contact.listIds } },
+        {
+          $addToSet: { contacts: contact._id },
+          $inc: { totalContacts: 1 }
+        }
+      )
+    }
+
     logger.info(`Contact created: ${contact._id}`)
     return contact
   } catch (error) {
     logger.error("Error creating contact:", error)
+    throw error
+  }
+}
+
+async function syncContactListCounts(userId = null) {
+  try {
+    const query = userId ? { userId } : {}
+    const lists = await ContactList.find(query)
+    let updatedCount = 0
+
+    for (const list of lists) {
+      // Find all contacts that have this listId
+      const contacts = await Contact.find({ listIds: list._id }, '_id')
+      const contactIds = contacts.map(c => c._id)
+
+      await ContactList.findByIdAndUpdate(list._id, {
+        contacts: contactIds,
+        totalContacts: contactIds.length
+      })
+      updatedCount++
+    }
+
+    return { success: true, count: updatedCount }
+  } catch (error) {
+    logger.error("Error syncing contact list counts:", error)
     throw error
   }
 }
@@ -760,7 +797,8 @@ async function getContacts(userId, { page = 1, limit = 10, search = "", status =
         { email: { $regex: search, $options: "i" } },
         { firstName: { $regex: search, $options: "i" } },
         { lastName: { $regex: search, $options: "i" } },
-        { company: { $regex: search, $options: "i" } }
+        { company: { $regex: search, $options: "i" } },
+        { interestedProducts: { $regex: search, $options: "i" } }
       ]
     }
 
@@ -804,7 +842,8 @@ async function getAllContacts({ page = 1, limit = 10, search = "", status = "", 
         { email: { $regex: search, $options: "i" } },
         { firstName: { $regex: search, $options: "i" } },
         { lastName: { $regex: search, $options: "i" } },
-        { company: { $regex: search, $options: "i" } }
+        { company: { $regex: search, $options: "i" } },
+        { interestedProducts: { $regex: search, $options: "i" } }
       ]
     }
 
@@ -841,6 +880,9 @@ async function getAllContacts({ page = 1, limit = 10, search = "", status = "", 
 
 async function updateContact(contactId, userId, updateData) {
   try {
+    // Get old contact to compare lists
+    const oldContact = await Contact.findOne({ _id: contactId, userId })
+
     const contact = await Contact.findOneAndUpdate(
       { _id: contactId, userId },
       updateData,
@@ -849,6 +891,35 @@ async function updateContact(contactId, userId, updateData) {
 
     if (!contact) {
       throw new Error("Contact not found")
+    }
+
+    // Handle list updates if changed
+    if (oldContact && updateData.listIds) {
+      const oldLists = (oldContact.listIds || []).map(id => id.toString())
+      const newLists = (contact.listIds || []).map(id => id.toString())
+
+      const addedLists = newLists.filter(id => !oldLists.includes(id))
+      const removedLists = oldLists.filter(id => !newLists.includes(id))
+
+      if (addedLists.length > 0) {
+        await ContactList.updateMany(
+          { _id: { $in: addedLists } },
+          {
+            $addToSet: { contacts: contact._id },
+            $inc: { totalContacts: 1 }
+          }
+        )
+      }
+
+      if (removedLists.length > 0) {
+        await ContactList.updateMany(
+          { _id: { $in: removedLists } },
+          {
+            $pull: { contacts: contact._id },
+            $inc: { totalContacts: -1 }
+          }
+        )
+      }
     }
 
     logger.info(`Contact updated: ${contactId}`)
@@ -867,10 +938,13 @@ async function deleteContact(contactId, userId) {
       throw new Error("Contact not found")
     }
 
-    // Remove from contact lists
+    // Remove from contact lists and decrement counts
     await ContactList.updateMany(
       { contacts: contactId },
-      { $pull: { contacts: contactId } }
+      {
+        $pull: { contacts: contactId },
+        $inc: { totalContacts: -1 }
+      }
     )
 
     logger.info(`Contact deleted: ${contactId}`)
@@ -2188,6 +2262,89 @@ async function getContactStats(userId) {
   }
 }
 
+// Dashboard statistics
+async function getDashboardStats(userId) {
+  try {
+    const query = { userId }
+
+    // Execute all counts in parallel
+    const [
+      totalCampaigns,
+      activeCampaigns,
+      completedCampaigns,
+      totalContacts,
+      activeContacts,
+      unsubscribedContacts,
+      totalTemplates,
+      activeTemplates,
+      totalLists
+    ] = await Promise.all([
+      Campaign.countDocuments(query),
+      Campaign.countDocuments({ ...query, status: { $in: ['sending', 'scheduled'] } }),
+      Campaign.countDocuments({ ...query, status: { $in: ['sent', 'completed'] } }),
+      Contact.countDocuments(query),
+      Contact.countDocuments({ ...query, status: 'active' }),
+      Contact.countDocuments({ ...query, status: 'unsubscribed' }),
+      Template.countDocuments(query),
+      Template.countDocuments({ ...query, isActive: true }),
+      ContactList.countDocuments(query)
+    ])
+
+    // Get status breakdown for chart
+    const campaignsByStatus = await Campaign.aggregate([
+      { $match: query },
+      { $group: { _id: "$status", count: { $sum: 1 } } }
+    ])
+
+    // Get recent growth (last 6 months) for chart
+    const sixMonthsAgo = new Date()
+    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5)
+    sixMonthsAgo.setDate(1)
+
+    const contactGrowth = await Contact.aggregate([
+      {
+        $match: {
+          ...query,
+          createdAt: { $gte: sixMonthsAgo }
+        }
+      },
+      {
+        $group: {
+          _id: {
+            month: { $month: "$createdAt" },
+            year: { $year: "$createdAt" }
+          },
+          count: { $sum: 1 }
+        }
+      },
+      { $sort: { "_id.year": 1, "_id.month": 1 } }
+    ])
+
+    // Get template usage by type
+    const templatesByType = await Template.aggregate([
+      { $match: query },
+      { $group: { _id: "$type", count: { $sum: 1 } } }
+    ])
+
+    return {
+      counts: {
+        campaigns: { total: totalCampaigns, active: activeCampaigns, completed: completedCampaigns },
+        contacts: { total: totalContacts, active: activeContacts, unsubscribed: unsubscribedContacts },
+        templates: { total: totalTemplates, active: activeTemplates },
+        lists: { total: totalLists }
+      },
+      charts: {
+        campaignsByStatus,
+        contactGrowth,
+        templatesByType
+      }
+    }
+  } catch (error) {
+    logger.error("Error fetching dashboard stats:", error)
+    throw error
+  }
+}
+
 module.exports = {
   // Campaign Management
   createCampaign,
@@ -2236,5 +2393,7 @@ module.exports = {
   manualStartCampaign,
 
   // Analytics
-  getCampaignStats
+  getCampaignStats,
+  syncContactListCounts,
+  getDashboardStats
 }

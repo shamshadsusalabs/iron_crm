@@ -1,10 +1,54 @@
-import { Card, Form, Input, Button, notification, Typography, Statistic } from 'antd';
+import { Card, Form, Input, Button, notification, Typography, Statistic, Checkbox } from 'antd';
 import { LockOutlined, MailOutlined, SafetyOutlined, ArrowLeftOutlined } from '@ant-design/icons';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import useMerchAuthStore, { type MerchUser } from '@/store/useMerchAuthStore';
 import merchAxios from '@/lib/merchAxios';
+
+// ===== DEVICE FINGERPRINT UTILITY =====
+// Simple hash function (djb2) — no external library needed
+function simpleHash(str: string): string {
+  let hash = 5381;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) + hash) + str.charCodeAt(i);
+    hash = hash & hash; // Convert to 32-bit integer
+  }
+  return Math.abs(hash).toString(36);
+}
+
+function generateDeviceFingerprint(): string {
+  const components = [
+    navigator.userAgent,
+    `${screen.width}x${screen.height}`,
+    `${screen.colorDepth}`,
+    navigator.language,
+    Intl.DateTimeFormat().resolvedOptions().timeZone,
+    navigator.hardwareConcurrency?.toString() || '0',
+    navigator.platform || '',
+  ];
+  return simpleHash(components.join('|'));
+}
+
+function getDeviceInfo(): string {
+  const ua = navigator.userAgent;
+  let browser = 'Unknown';
+  let os = 'Unknown';
+
+  if (ua.includes('Chrome') && !ua.includes('Edg')) browser = 'Chrome';
+  else if (ua.includes('Firefox')) browser = 'Firefox';
+  else if (ua.includes('Safari') && !ua.includes('Chrome')) browser = 'Safari';
+  else if (ua.includes('Edg')) browser = 'Edge';
+
+  if (ua.includes('Win')) os = 'Windows';
+  else if (ua.includes('Mac')) os = 'macOS';
+  else if (ua.includes('Linux')) os = 'Linux';
+  else if (ua.includes('Android')) os = 'Android';
+  else if (ua.includes('iPhone') || ua.includes('iPad')) os = 'iOS';
+
+  return `${browser} on ${os}`;
+}
+// ===== END DEVICE FINGERPRINT UTILITY =====
 
 const { Text } = Typography;
 const { Countdown } = Statistic;
@@ -31,8 +75,13 @@ const AuthCard = (_props: AuthCardProps) => {
   const [step, setStep] = useState<LoginStep>('credentials');
   const [email, setEmail] = useState('');
   const [otpExpiry, setOtpExpiry] = useState<number | null>(null);
+  const [trustDevice, setTrustDevice] = useState(true); // Default checked
   const navigate = useNavigate();
   const setAuth = useMerchAuthStore((s) => s.setAuth);
+
+  // Generate fingerprint once on mount
+  const deviceFingerprint = useMemo(() => generateDeviceFingerprint(), []);
+  const deviceInfo = useMemo(() => getDeviceInfo(), []);
 
   // Reset OTP expiry when going back to credentials
   useEffect(() => {
@@ -41,7 +90,7 @@ const AuthCard = (_props: AuthCardProps) => {
     }
   }, [step]);
 
-  // Step 1: Request OTP
+  // Step 1: Request OTP (or skip if trusted device)
   const onCredentialsSubmit = async (values: CredentialsFormValues) => {
     if (loading) return;
     setLoading(true);
@@ -51,11 +100,54 @@ const AuthCard = (_props: AuthCardProps) => {
       const { data } = await merchAxios.post('/request-otp', {
         email: values.email,
         password: values.password,
+        deviceFingerprint,
+        deviceInfo,
       });
 
       console.log('[AuthCard] OTP request response:', data);
 
-      // Store email and move to OTP step
+      // ===== TRUSTED DEVICE — SKIP OTP =====
+      if (data.otpRequired === false) {
+        // Device is trusted, server returned tokens directly
+        const u = data.user;
+        const accessToken = data.accessToken;
+        const refreshToken = data.refreshToken;
+
+        if (!u || !accessToken) throw new Error('Invalid server response');
+
+        const merchUser: MerchUser = {
+          id: u._id,
+          email: u.email,
+          isActive: !!u.active,
+          permissions: {
+            catalog: !!u.isCatalogAccess,
+            lead: !!u.isLeadAccess,
+            template: !!u.isTemplateAccess,
+            email: !!u.isEmailAccess,
+            followUp: !!u.isFollowUpAccess,
+            customerEnquiry: !!u.isCustomerEnquiry,
+            customerProfiling: !!u.isCustomerProfiling,
+          },
+        };
+
+        if (!merchUser.isActive) {
+          notification.error({ message: 'Account Inactive', description: 'Please contact admin.' });
+          return;
+        }
+
+        if (refreshToken) localStorage.setItem('merchRefreshToken', refreshToken);
+        setAuth(accessToken, merchUser);
+
+        notification.success({
+          message: 'Trusted Device',
+          description: 'Recognized device — logged in without OTP! 🔒',
+        });
+        navigate('/merchandiser/merchandiserDashboard', { replace: true });
+        return;
+      }
+      // ===== END TRUSTED DEVICE =====
+
+      // OTP required — show OTP step
       setEmail(values.email);
       setOtpExpiry(Date.now() + (data.expiresIn * 1000));
       setStep('otp');
@@ -102,6 +194,9 @@ const AuthCard = (_props: AuthCardProps) => {
       const { data } = await merchAxios.post('/verify-otp', {
         email: email,
         otp: values.otp,
+        trustDevice: trustDevice,
+        deviceFingerprint,
+        deviceInfo,
       });
 
       console.log('[AuthCard] OTP verification response:', data);
@@ -142,7 +237,7 @@ const AuthCard = (_props: AuthCardProps) => {
       setAuth(accessToken, merchUser);
       notification.success({
         message: 'Login Successful',
-        description: 'Redirecting to dashboard...',
+        description: trustDevice ? 'This device is now trusted for 30 days! 🔒' : 'Redirecting to dashboard...',
       });
       navigate('/merchandiser/merchandiserDashboard', { replace: true });
     } catch (error: unknown) {
@@ -369,6 +464,19 @@ const AuthCard = (_props: AuthCardProps) => {
                     {loading ? 'Verifying...' : 'Verify & Login'}
                   </Button>
                 </Form.Item>
+
+                {/* Trust Device Checkbox */}
+                <div className="bg-blue-50 rounded-lg p-3 mb-2">
+                  <Checkbox
+                    checked={trustDevice}
+                    onChange={(e) => setTrustDevice(e.target.checked)}
+                  >
+                    <span className="text-sm text-gray-700">
+                      🔒 Trust this device for 30 days <br />
+                      <span className="text-xs text-gray-500">No OTP needed on next login from this device</span>
+                    </span>
+                  </Checkbox>
+                </div>
 
                 <div className="text-center">
                   <Text className="text-gray-500 text-sm">

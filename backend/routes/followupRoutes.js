@@ -13,6 +13,7 @@ router.get('/campaigns/:campaignId', followupController.getCampaignById)
 router.put('/campaigns/:campaignId', followupController.updateCampaign)
 router.delete('/campaigns/:campaignId', followupController.deleteCampaign)
 router.post('/campaigns/:campaignId/start', followupController.startCampaign)
+router.post('/campaigns/:campaignId/restart', followupController.restartCampaign)
 
 // Contact Routes
 router.get('/contacts/stats', followupController.getContactStats)
@@ -44,7 +45,8 @@ router.put('/followups/:followupId', followupController.updateFollowup)
 router.delete('/followups/:followupId', followupController.deleteFollowup)
 
 // Analytics Routes
-router.get('/campaigns/:campaignId/stats', verifyAccessToken, followupController.getCampaignStats)
+router.get('/stats/dashboard', followupController.getDashboardStats)
+router.get('/campaigns/:campaignId/stats', followupController.getCampaignStats)
 
 // ENHANCED: Sequence management endpoints
 router.get('/campaigns/:campaignId/sequence-status', verifyAccessToken, followupController.getSequenceStatus)

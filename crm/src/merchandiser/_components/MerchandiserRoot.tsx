@@ -1,11 +1,48 @@
+import { useEffect, useRef } from 'react'
 import { Outlet } from 'react-router-dom'
+import { notification } from 'antd'
 import AuthCard from '../AuthCard'
 import useMerchAuthStore from '@/store/useMerchAuthStore'
+import merchAxios from '@/lib/merchAxios'
+
+const SESSION_DURATION_MS = 12 * 60 * 60 * 1000 // 12 hours in milliseconds
 
 const MerchandiserRoot = () => {
   const isAuthenticated = useMerchAuthStore((s) => s.isAuthenticated)
   const user = useMerchAuthStore((s) => s.user)
   const logout = useMerchAuthStore((s) => s.logout)
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Auto-logout after 12 hours
+  useEffect(() => {
+    if (isAuthenticated) {
+      // Clear any existing timer
+      if (timerRef.current) clearTimeout(timerRef.current)
+
+      timerRef.current = setTimeout(async () => {
+        try {
+          await merchAxios.post('/logout')
+        } catch (err) {
+          console.error('[AutoLogout] Logout API error:', err)
+        }
+        notification.warning({
+          message: 'Session Expired',
+          description: 'Your session has expired after 12 hours. Please login again.',
+          duration: 5,
+        })
+        logout()
+      }, SESSION_DURATION_MS)
+
+      console.log('[Session] Auto-logout timer started (12 hours)')
+    }
+
+    return () => {
+      if (timerRef.current) {
+        clearTimeout(timerRef.current)
+        timerRef.current = null
+      }
+    }
+  }, [isAuthenticated, logout])
 
   if (!isAuthenticated) {
     return (
@@ -36,3 +73,4 @@ const MerchandiserRoot = () => {
 }
 
 export default MerchandiserRoot
+

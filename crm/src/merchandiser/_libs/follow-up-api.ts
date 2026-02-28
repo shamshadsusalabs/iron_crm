@@ -1,7 +1,7 @@
 import merchAxios from '@/lib/merchAxios'
 import useMerchAuthStore from '@/store/useMerchAuthStore'
 
-const BASE = 'http://localhost:5000/api/follow-up'
+const BASE = `${import.meta.env.VITE_API_URL ?? 'https://crmbackend-469714.el.r.appspot.com'}/api/follow-up`
 
 function authHeaders() {
   const { user } = useMerchAuthStore.getState()

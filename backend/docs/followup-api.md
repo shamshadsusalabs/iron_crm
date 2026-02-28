@@ -2,7 +2,7 @@
 
 ## Base URL
 ```
-http://localhost:5000/api/followup
+https://crmbackend-469714.el.r.appspot.com/api/followup
 ```
 
 ## Authentication

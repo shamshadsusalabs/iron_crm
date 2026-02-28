@@ -25,6 +25,8 @@ const { Title, Text } = Typography
 const { Option } = Select
 const { TextArea } = Input
 
+const API_BASE = import.meta.env.VITE_API_URL ?? 'https://crmbackend-469714.el.r.appspot.com'
+
 // Helpers to handle IST (Asia/Kolkata) timezone consistently
 // 1) Format a Date/ISO string to datetime-local (YYYY-MM-DDTHH:mm) in IST
 function formatDateTimeIST(date: string | Date): string {
@@ -72,6 +74,7 @@ export default function FollowUpCampaigns() {
     updateCampaign,
     deleteCampaign,
     startCampaign,
+    restartCampaign,
     loadCampaigns,
     updateCampaignStats
   } = useFollowUpContext()
@@ -105,7 +108,7 @@ export default function FollowUpCampaigns() {
           for (const batch of batches) {
             const batchPromises = batch.map(async (campaign) => {
               try {
-                const response = await fetch(`http://localhost:5000/api/tracking/campaign/${campaign._id}/stats`)
+                const response = await fetch(`${API_BASE}/api/tracking/campaign/${campaign._id}/stats`)
                 if (response.ok) {
                   const result = await response.json()
                   if (result.success && result.stats) {
@@ -145,9 +148,11 @@ export default function FollowUpCampaigns() {
   const [editSubmitting, setEditSubmitting] = useState(false)
   const [refreshingStats, setRefreshingStats] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
-  // Tracking details state for the tracking modal
   const [trackingDetails, setTrackingDetails] = useState<any[]>([])
   const [trackingLoading, setTrackingLoading] = useState(false)
+  const [restartModalVisible, setRestartModalVisible] = useState(false)
+  const [restartSubmitting, setRestartSubmitting] = useState(false)
+  const [restartOptions, setRestartOptions] = useState({ resetStats: true, autoStart: false })
   const [form] = Form.useForm()
 
   // Calculate status statistics
@@ -179,7 +184,7 @@ export default function FollowUpCampaigns() {
       for (const batch of batches) {
         const batchPromises = batch.map(async (campaign) => {
           try {
-            const response = await fetch(`http://localhost:5000/api/tracking/campaign/${campaign._id}/stats`)
+            const response = await fetch(`${API_BASE}/api/tracking/campaign/${campaign._id}/stats`)
             if (response.ok) {
               const result = await response.json()
               if (result.success && result.stats) {
@@ -219,8 +224,8 @@ export default function FollowUpCampaigns() {
     try {
       // Call both stats and details APIs
       const [statsResponse, detailsResponse] = await Promise.all([
-        fetch(`http://localhost:5000/api/tracking/campaign/${selectedCampaign._id}/stats`),
-        fetch(`http://localhost:5000/api/tracking/campaign/${selectedCampaign._id}/details`)
+        fetch(`${API_BASE}/api/tracking/campaign/${selectedCampaign._id}/stats`),
+        fetch(`${API_BASE}/api/tracking/campaign/${selectedCampaign._id}/details`)
       ])
 
       // Handle stats response
@@ -470,6 +475,18 @@ export default function FollowUpCampaigns() {
               />
             </Tooltip>
           </Popconfirm>
+
+          {/* Restart button - only for completed, sent, or paused campaigns */}
+          {['completed', 'sent', 'paused'].includes(record.status) && (
+            <Tooltip title="Restart Campaign">
+              <Button
+                type="text"
+                size="small"
+                icon={<ReloadOutlined style={{ color: '#1890ff' }} />}
+                onClick={() => handleRestartClick(record)}
+              />
+            </Tooltip>
+          )}
         </Space>
       ),
     },
@@ -514,6 +531,29 @@ export default function FollowUpCampaigns() {
     }
   }
 
+  const handleRestartClick = (campaign: Campaign) => {
+    setSelectedCampaign(campaign)
+    setRestartOptions({ resetStats: true, autoStart: false })
+    setRestartModalVisible(true)
+  }
+
+  const handleRestartCampaign = async () => {
+    if (!selectedCampaign) return
+
+    try {
+      setRestartSubmitting(true)
+      await restartCampaign(selectedCampaign._id, restartOptions)
+      setRestartModalVisible(false)
+      setSelectedCampaign(null)
+      // Reload campaigns to get fresh data
+      await loadCampaigns(1, 100)
+    } catch (error) {
+      console.error('Failed to restart campaign:', error)
+    } finally {
+      setRestartSubmitting(false)
+    }
+  }
+
   const handleViewStats = async (campaign: Campaign) => {
     setSelectedCampaign(campaign)
     setTrackingModalVisible(true)
@@ -521,7 +561,7 @@ export default function FollowUpCampaigns() {
     // Load tracking details for this campaign
     setTrackingLoading(true)
     try {
-      const response = await fetch(`http://localhost:5000/api/tracking/campaign/${campaign._id}/details?userId=${campaign.userId}`)
+      const response = await fetch(`${API_BASE}/api/tracking/campaign/${campaign._id}/details?userId=${campaign.userId}`)
       if (response.ok) {
         try {
           const result = await response.json()
@@ -899,9 +939,24 @@ export default function FollowUpCampaigns() {
                                                     label="Email Template"
                                                     rules={[{ required: true, message: 'Select a template for this step' }]}
                                                   >
-                                                    <Select placeholder="Select template" loading={templatesLoading}>
+                                                    <Select
+                                                      placeholder="Select template"
+                                                      loading={templatesLoading}
+                                                      showSearch
+                                                      filterOption={(input, option) => {
+                                                        const name = option?.name || '';
+                                                        const type = option?.type || '';
+                                                        const searchText = input.toLowerCase();
+                                                        return name.toLowerCase().includes(searchText) || type.toLowerCase().includes(searchText);
+                                                      }}
+                                                    >
                                                       {templates.map(t => (
-                                                        <Option key={t._id} value={t._id}>
+                                                        <Option
+                                                          key={t._id}
+                                                          value={t._id}
+                                                          name={t.name}
+                                                          type={t.type}
+                                                        >
                                                           {t.name} ({t.type})
                                                         </Option>
                                                       ))}
@@ -919,11 +974,11 @@ export default function FollowUpCampaigns() {
                                                       showSearch
                                                       loading={catalogItemsLoading}
                                                       filterOption={(input, option) =>
-                                                        (option?.children as unknown as string)?.toLowerCase().includes(input.toLowerCase())
+                                                        (option?.label as unknown as string)?.toLowerCase().includes(input.toLowerCase())
                                                       }
                                                     >
                                                       {catalogItems.map((item) => (
-                                                        <Option key={item._id} value={item._id}>
+                                                        <Option key={item._id} value={item._id} label={item.title}>
                                                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                                             {item.images && item.images.length > 0 ? (
                                                               <img
@@ -1054,9 +1109,24 @@ export default function FollowUpCampaigns() {
                 label="Email Template"
                 rules={[{ required: true, message: 'Please select a template' }]}
               >
-                <Select placeholder="Select template" loading={templatesLoading}>
+                <Select
+                  placeholder="Select template"
+                  loading={templatesLoading}
+                  showSearch
+                  filterOption={(input, option) => {
+                    const name = option?.name || '';
+                    const type = option?.type || '';
+                    const searchText = input.toLowerCase();
+                    return name.toLowerCase().includes(searchText) || type.toLowerCase().includes(searchText);
+                  }}
+                >
                   {templates.map(template => (
-                    <Option key={template._id} value={template._id}>
+                    <Option
+                      key={template._id}
+                      value={template._id}
+                      name={template.name}
+                      type={template.type}
+                    >
                       {template.name} ({template.type})
                     </Option>
                   ))}
@@ -1626,6 +1696,132 @@ export default function FollowUpCampaigns() {
                 </div>
               </Card>
             )}
+          </div>
+        )}
+      </Modal>
+
+      {/* Restart Campaign Modal */}
+      <Modal
+        title={
+          <div className="flex items-center space-x-2">
+            <ReloadOutlined style={{ color: '#1890ff' }} />
+            <span>Restart Campaign</span>
+          </div>
+        }
+        open={restartModalVisible}
+        onCancel={() => {
+          setRestartModalVisible(false)
+          setSelectedCampaign(null)
+        }}
+        footer={[
+          <Button
+            key="cancel"
+            onClick={() => {
+              setRestartModalVisible(false)
+              setSelectedCampaign(null)
+            }}
+          >
+            Cancel
+          </Button>,
+          <Button
+            key="restart"
+            type="primary"
+            icon={<ReloadOutlined />}
+            loading={restartSubmitting}
+            onClick={handleRestartCampaign}
+          >
+            {restartOptions.autoStart ? 'Restart & Start' : 'Restart to Draft'}
+          </Button>
+        ]}
+        width={500}
+      >
+        {selectedCampaign && (
+          <div className="space-y-6">
+            {/* Campaign Info */}
+            <div className="bg-gray-50 p-4 rounded-lg">
+              <div className="text-lg font-semibold mb-2">{selectedCampaign.name}</div>
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <span className="text-gray-500">Current Status:</span>
+                  <Tag className="ml-2" color={selectedCampaign.status === 'completed' ? 'success' : selectedCampaign.status === 'paused' ? 'warning' : 'default'}>
+                    {selectedCampaign.status}
+                  </Tag>
+                </div>
+                <div>
+                  <span className="text-gray-500">Send Type:</span>
+                  <span className="ml-2 font-medium">{selectedCampaign.sendType}</span>
+                </div>
+                <div>
+                  <span className="text-gray-500">Contacts:</span>
+                  <span className="ml-2 font-medium">{selectedCampaign.contacts.length + selectedCampaign.contactLists.length}</span>
+                </div>
+                <div>
+                  <span className="text-gray-500">Run Count:</span>
+                  <span className="ml-2 font-medium">#{((selectedCampaign as any).restartCount || 0) + 1}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Current Stats (will be archived) */}
+            {selectedCampaign.stats.totalSent > 0 && (
+              <div className="bg-blue-50 p-4 rounded-lg">
+                <div className="text-sm font-semibold text-blue-800 mb-2">📊 Current Run Stats (will be archived)</div>
+                <div className="grid grid-cols-3 gap-4 text-center">
+                  <div>
+                    <div className="text-xl font-bold text-gray-700">{selectedCampaign.stats.totalSent}</div>
+                    <div className="text-xs text-gray-500">Sent</div>
+                  </div>
+                  <div>
+                    <div className="text-xl font-bold text-blue-600">{selectedCampaign.stats.opened}</div>
+                    <div className="text-xs text-gray-500">Opened</div>
+                  </div>
+                  <div>
+                    <div className="text-xl font-bold text-green-600">{selectedCampaign.stats.clicked}</div>
+                    <div className="text-xs text-gray-500">Clicked</div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Restart Options */}
+            <div className="space-y-4">
+              <div className="text-sm font-semibold text-gray-700">Restart Options</div>
+
+              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                <div>
+                  <div className="font-medium">Reset Statistics</div>
+                  <div className="text-xs text-gray-500">Start fresh with 0 sent, 0 opened, 0 clicked</div>
+                </div>
+                <Checkbox
+                  checked={restartOptions.resetStats}
+                  onChange={(e) => setRestartOptions(prev => ({ ...prev, resetStats: e.target.checked }))}
+                />
+              </div>
+
+              <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                <div>
+                  <div className="font-medium">Auto-Start Campaign</div>
+                  <div className="text-xs text-gray-500">Automatically start sending after restart</div>
+                </div>
+                <Checkbox
+                  checked={restartOptions.autoStart}
+                  onChange={(e) => setRestartOptions(prev => ({ ...prev, autoStart: e.target.checked }))}
+                />
+              </div>
+            </div>
+
+            {/* Info Message */}
+            <div className="bg-yellow-50 border border-yellow-200 p-3 rounded-lg">
+              <div className="text-sm text-yellow-800">
+                <strong>ℹ️ Note:</strong> Restarting will:
+                <ul className="list-disc list-inside mt-1 text-xs">
+                  <li>Archive current run statistics to history</li>
+                  <li>Reset campaign status to "draft"</li>
+                  <li>Allow you to {restartOptions.autoStart ? 'immediately start' : 'edit and then start'} the campaign again</li>
+                  <li>Send emails to the same contacts again</li>
+                </ul>
+              </div>
+            </div>
           </div>
         )}
       </Modal>

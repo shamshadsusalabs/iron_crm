@@ -7,7 +7,7 @@ import type {
   SchedulerStatus
 } from '../../follow-up/types/follow-up'
 
-const API_BASE_URL = 'http://localhost:5000/api/follow-ups'
+const API_BASE_URL = `${import.meta.env.VITE_API_URL ?? 'https://crmbackend-469714.el.r.appspot.com'}/api/follow-ups`
 
 const getAdminId = (): string => {
   if (typeof window !== 'undefined') {

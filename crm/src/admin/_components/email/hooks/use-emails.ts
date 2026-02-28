@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react"
 import type { ApiResponse, EmailThread } from "../types/email"
 
 // Prefer Vite env for API base; fallback to localhost for dev
-const API_BASE_URL = `${import.meta.env.VITE_API_URL ?? "http://localhost:5000"}/api/emails`
+const API_BASE_URL = `${import.meta.env.VITE_API_URL ?? "https://crmbackend-469714.el.r.appspot.com"}/api/emails`
 
 // Helper to attach Authorization header when token is present
 function buildHeaders(token: string): Record<string, string> {
@@ -320,7 +320,7 @@ export function useEmails() {
 
   // Listen to Server-Sent Events for lightweight realtime updates
   useEffect(() => {
-    const rawBase = import.meta.env.VITE_API_URL ?? "http://localhost:5000"
+    const rawBase = import.meta.env.VITE_API_URL ?? "https://crmbackend-469714.el.r.appspot.com"
     const token = getAccessToken()
     const streamUrl = `${rawBase}/api/emails/stream${token ? `?accessToken=${encodeURIComponent(token)}` : ""}`
     const es = new EventSource(streamUrl, { withCredentials: true })

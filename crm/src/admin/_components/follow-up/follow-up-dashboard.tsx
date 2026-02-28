@@ -1,10 +1,10 @@
 "use client"
 
 import { Card, Row, Col, Statistic, Table, Typography, Tag, Progress } from 'antd'
-import { 
-  MailOutlined, 
-  UserOutlined, 
-  FileTextOutlined, 
+import {
+  MailOutlined,
+  UserOutlined,
+  FileTextOutlined,
   RiseOutlined,
   FallOutlined,
   PlayCircleOutlined,
@@ -44,30 +44,35 @@ ChartJS.register(
 const { Title: AntTitle, Text } = Typography
 
 export default function FollowUpDashboard() {
-  const { 
-    campaigns, 
-    contacts, 
-    templates, 
+  const {
+    campaigns,
+    contacts,
+    templates,
     contactLists,
+    dashboardStats,
     campaignsLoading,
     contactsLoading,
     templatesLoading,
-    contactListsLoading
+    contactListsLoading,
+    dashboardStatsLoading
   } = useFollowUpContext()
 
-  // Calculate statistics
-  const totalCampaigns = campaigns.length
-  const activeCampaigns = campaigns.filter(c => c.status === "sending" || c.status === "scheduled").length
-  const completedCampaigns = campaigns.filter(c => c.status === "sent" || c.status === "completed").length
-  
-  const totalContacts = contacts.length
-  const activeContacts = contacts.filter(c => c.status === "active").length
-  const unsubscribedContacts = contacts.filter(c => c.status === "unsubscribed").length
-  
-  const totalTemplates = templates.length
-  const activeTemplates = templates.filter(t => t.isActive).length
-  
-  const totalContactLists = contactLists.length
+  // Use dashboardStats for counts
+  const stats = dashboardStats?.counts || {}
+
+  // Calculate statistics (prefer server-side stats)
+  const totalCampaigns = stats.campaigns?.total ?? campaigns.length
+  const activeCampaigns = stats.campaigns?.active ?? campaigns.filter(c => c.status === "sending" || c.status === "scheduled").length
+  const completedCampaigns = stats.campaigns?.completed ?? campaigns.filter(c => c.status === "sent" || c.status === "completed").length
+
+  const totalContacts = stats.contacts?.total ?? contacts.length
+  const activeContacts = stats.contacts?.active ?? contacts.filter(c => c.status === "active").length
+  const unsubscribedContacts = stats.contacts?.unsubscribed ?? contacts.filter(c => c.status === "unsubscribed").length
+
+  const totalTemplates = stats.templates?.total ?? templates.length
+  const activeTemplates = stats.templates?.active ?? templates.filter(t => t.isActive).length
+
+  const totalContactLists = stats.lists?.total ?? contactLists.length
 
   // Campaign performance data
   const campaignPerformanceData = {
@@ -75,13 +80,21 @@ export default function FollowUpDashboard() {
     datasets: [
       {
         label: 'Campaigns',
-        data: [
-          campaigns.filter(c => c.status === "draft").length,
-          campaigns.filter(c => c.status === "scheduled").length,
-          campaigns.filter(c => c.status === "sending").length,
-          campaigns.filter(c => c.status === "sent").length,
-          campaigns.filter(c => c.status === "completed").length,
-        ],
+        data: dashboardStats?.charts?.campaignsByStatus
+          ? [
+            dashboardStats.charts.campaignsByStatus.find((s: any) => s._id === 'draft')?.count || 0,
+            dashboardStats.charts.campaignsByStatus.find((s: any) => s._id === 'scheduled')?.count || 0,
+            dashboardStats.charts.campaignsByStatus.find((s: any) => s._id === 'sending')?.count || 0,
+            dashboardStats.charts.campaignsByStatus.find((s: any) => s._id === 'sent')?.count || 0,
+            dashboardStats.charts.campaignsByStatus.find((s: any) => s._id === 'completed')?.count || 0,
+          ]
+          : [
+            campaigns.filter(c => c.status === "draft").length,
+            campaigns.filter(c => c.status === "scheduled").length,
+            campaigns.filter(c => c.status === "sending").length,
+            campaigns.filter(c => c.status === "sent").length,
+            campaigns.filter(c => c.status === "completed").length,
+          ],
         backgroundColor: [
           'rgba(156, 163, 175, 0.7)',
           'rgba(59, 130, 246, 0.7)',
@@ -101,13 +114,13 @@ export default function FollowUpDashboard() {
     ],
   }
 
-  // Contact growth data
+  // Contact growth data (simplify for now or use chart data if available)
   const contactGrowthData = {
-    labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
+    labels: dashboardStats?.charts?.contactGrowth?.map((d: any) => `${d._id.month}/${d._id.year}`) || ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
     datasets: [
       {
         label: 'New Contacts',
-        data: [12, 19, 15, 27, 22, 30],
+        data: dashboardStats?.charts?.contactGrowth?.map((d: any) => d.count) || [12, 19, 15, 27, 22, 30],
         borderColor: 'rgba(59, 130, 246, 1)',
         backgroundColor: 'rgba(59, 130, 246, 0.2)',
         tension: 0.4,
@@ -120,12 +133,19 @@ export default function FollowUpDashboard() {
     labels: ['Initial', 'Follow-up 1', 'Follow-up 2', 'Follow-up 3'],
     datasets: [
       {
-        data: [
-          templates.filter(t => t.type === "initial").length,
-          templates.filter(t => t.type === "followup1").length,
-          templates.filter(t => t.type === "followup2").length,
-          templates.filter(t => t.type === "followup3").length,
-        ],
+        data: dashboardStats?.charts?.templatesByType
+          ? [
+            dashboardStats.charts.templatesByType.find((t: any) => t._id === 'initial')?.count || 0,
+            dashboardStats.charts.templatesByType.find((t: any) => t._id === 'followup1')?.count || 0,
+            dashboardStats.charts.templatesByType.find((t: any) => t._id === 'followup2')?.count || 0,
+            dashboardStats.charts.templatesByType.find((t: any) => t._id === 'followup3')?.count || 0,
+          ]
+          : [
+            templates.filter(t => t.type === "initial").length,
+            templates.filter(t => t.type === "followup1").length,
+            templates.filter(t => t.type === "followup2").length,
+            templates.filter(t => t.type === "followup3").length,
+          ],
         backgroundColor: [
           'rgba(59, 130, 246, 0.7)',
           'rgba(16, 185, 129, 0.7)',
@@ -235,7 +255,7 @@ export default function FollowUpDashboard() {
               title="Total Campaigns"
               value={totalCampaigns}
               prefix={<MailOutlined className="text-blue-500" />}
-              loading={campaignsLoading}
+              loading={dashboardStatsLoading}
             />
             <div className="mt-2">
               <Text type="secondary">
@@ -244,14 +264,14 @@ export default function FollowUpDashboard() {
             </div>
           </Card>
         </Col>
-        
+
         <Col xs={24} sm={12} lg={6}>
           <Card>
             <Statistic
               title="Total Contacts"
               value={totalContacts}
               prefix={<UserOutlined className="text-green-500" />}
-              loading={contactsLoading}
+              loading={dashboardStatsLoading}
             />
             <div className="mt-2">
               <Text type="secondary">
@@ -260,14 +280,14 @@ export default function FollowUpDashboard() {
             </div>
           </Card>
         </Col>
-        
+
         <Col xs={24} sm={12} lg={6}>
           <Card>
             <Statistic
               title="Email Templates"
               value={totalTemplates}
               prefix={<FileTextOutlined className="text-purple-500" />}
-              loading={templatesLoading}
+              loading={dashboardStatsLoading}
             />
             <div className="mt-2">
               <Text type="secondary">
@@ -276,14 +296,14 @@ export default function FollowUpDashboard() {
             </div>
           </Card>
         </Col>
-        
+
         <Col xs={24} sm={12} lg={6}>
           <Card>
             <Statistic
               title="Contact Lists"
               value={totalContactLists}
               prefix={<BarChartOutlined className="text-orange-500" />}
-              loading={contactListsLoading}
+              loading={dashboardStatsLoading}
             />
             <div className="mt-2">
               <Text type="secondary">
@@ -298,7 +318,7 @@ export default function FollowUpDashboard() {
       <Row gutter={[16, 16]}>
         <Col xs={24} lg={12}>
           <Card title="Campaign Performance" className="h-80">
-            <Bar 
+            <Bar
               data={campaignPerformanceData}
               options={{
                 responsive: true,
@@ -312,10 +332,10 @@ export default function FollowUpDashboard() {
             />
           </Card>
         </Col>
-        
+
         <Col xs={24} lg={12}>
           <Card title="Contact Growth" className="h-80">
-            <Line 
+            <Line
               data={contactGrowthData}
               options={{
                 responsive: true,
@@ -335,7 +355,7 @@ export default function FollowUpDashboard() {
       <Row gutter={[16, 16]}>
         <Col xs={24} lg={8}>
           <Card title="Template Usage" className="h-80">
-            <Pie 
+            <Pie
               data={templateUsageData}
               options={{
                 responsive: true,
@@ -349,7 +369,7 @@ export default function FollowUpDashboard() {
             />
           </Card>
         </Col>
-        
+
         <Col xs={24} lg={16}>
           <Card title="Recent Campaigns" className="h-80">
             <Table
@@ -363,8 +383,8 @@ export default function FollowUpDashboard() {
         </Col>
       </Row>
 
-   
-     
+
+
     </div>
   )
 } 

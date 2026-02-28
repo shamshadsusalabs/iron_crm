@@ -176,6 +176,20 @@ const CustomerProfileManagement = () => {
       extra={
         <Space wrap>
           <div style={{ marginRight: 12 }}>
+            <Input
+              placeholder="Search customers..."
+              allowClear
+              value={searchInput}
+              onChange={(e) => {
+                setSearchInput(e.target.value);
+                if (!e.target.value) setQuery(''); // Clear query immediately on clear
+              }}
+              onPressEnter={handleSearch}
+              style={{ width: 200 }}
+              suffix={<SearchOutlined onClick={handleSearch} style={{ cursor: 'pointer', color: '#1890ff' }} />}
+            />
+          </div>
+          <div style={{ marginRight: 12 }}>
             <span style={{ marginRight: 8, fontWeight: 500 }}>Filter by Status:</span>
             <Select
               placeholder="All Statuses"

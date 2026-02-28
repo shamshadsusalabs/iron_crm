@@ -23,6 +23,7 @@ interface LeadData {
 const LeadTable = () => {
   const [filterVisible, setFilterVisible] = useState(false);
   const [selectedStatus, setSelectedStatus] = useState<string[]>([]);
+  const [selectedProducts, setSelectedProducts] = useState<string[]>([]);
   const [search, setSearch] = useState<string>('');
 
   // Data state
@@ -44,11 +45,26 @@ const LeadTable = () => {
   // Email compose state
   const [composeOpen, setComposeOpen] = useState(false)
   const [composePrefill, setComposePrefill] = useState<{ to?: string; subject?: string; text?: string }>({})
+
+  // Row selection state
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([])
+  const [bulkComposeLoading, setBulkComposeLoading] = useState(false)
+
   // Default sort by customer name in ascending order
   const [tableSorter, setTableSorter] = useState<{ field: string; order: 'ascend' | 'descend' }>({
     field: 'customer',
     order: 'ascend'
   })
+
+  // Collect all unique products from loaded leads for filter dropdown and keep them across filter runs
+  const [allProducts, setAllProducts] = useState<string[]>([]);
+  useEffect(() => {
+    setAllProducts(prev => {
+      const set = new Set(prev);
+      leads.forEach(l => (l as any).interestedProducts?.forEach((p: string) => set.add(p)));
+      return Array.from(set).sort();
+    });
+  }, [leads]);
 
   const openCreate = () => {
     setEditing(null);
@@ -218,29 +234,36 @@ const LeadTable = () => {
   };
 
 
+  // Build current filter params (shared between loadLeads and bulk compose)
+  const buildFilterParams = () => {
+    const params: any = {}
+    if (search) params.search = search
+    if (selectedStatus.length > 0) {
+      const mapped = selectedStatus.map((s) =>
+        s === 'followup'
+          ? 'Follow-up'
+          : s.toString().replace(/^./, (c: string) => c.toUpperCase())
+      )
+      params.status = mapped.join(',')
+    }
+    if (selectedProducts.length > 0) params.product = selectedProducts.join(',')
+    return params
+  }
+
   const loadLeads = async (page = 1, limit = pagination.limit) => {
     setLoading(true);
     try {
       const params: any = {
+        ...buildFilterParams(),
         page,
         limit,
-        // Send sort parameters to the server
         sortBy: tableSorter.field,
         sortOrder: tableSorter.order === 'ascend' ? 'asc' : 'desc'
       };
 
-      if (search) params.search = search;
-      // map status keys ['hot','cold','followup'] -> labels with proper casing
-      if (selectedStatus.length > 0) {
-        const mapped = selectedStatus.map((s) =>
-          s === 'followup'
-            ? 'Follow-up'
-            : s.toString().replace(/^./, (c: string) => c.toUpperCase())
-        );
-        params.status = mapped.join(',');
-      }
       const { leads: items, pagination: pg } = await leadApi.list(params);
       setLeads(items);
+      setSelectedRowKeys([]) // clear selection on reload
       setPagination({ page: pg.page, limit: pg.limit, total: pg.total });
     } catch (e: any) {
       message.error(e?.response?.data?.message || 'Failed to load leads');
@@ -249,19 +272,55 @@ const LeadTable = () => {
     }
   };
 
+  // Bulk compose: fetch ALL filtered emails from server and open compose
+  const handleBulkCompose = async () => {
+    setBulkComposeLoading(true)
+    try {
+      const filters = buildFilterParams()
+      const result = await leadApi.fetchFilteredEmails(filters)
+      if (result.emails.length === 0) {
+        message.warning('No emails found matching the current filters.')
+        return
+      }
+      if (result.capped) {
+        message.warning(`Showing first 5000 emails out of ${result.total}. Please narrow your filters.`)
+      }
+      setComposePrefill({ to: result.emails.join(', '), subject: '', text: '' })
+      setComposeOpen(true)
+    } catch (e: any) {
+      message.error(e?.response?.data?.message || 'Failed to fetch emails')
+    } finally {
+      setBulkComposeLoading(false)
+    }
+  }
+
+  // Compose to selected rows only (current page selection)
+  const handleComposeSelected = () => {
+    const emails = leads
+      .filter(l => selectedRowKeys.includes(l._id))
+      .map(l => l.email)
+      .filter(Boolean)
+    if (emails.length === 0) {
+      message.warning('No emails found in selected leads.')
+      return
+    }
+    setComposePrefill({ to: emails.join(', '), subject: '', text: '' })
+    setComposeOpen(true)
+  };
+
   useEffect(() => {
     loadLeads(1, pagination.limit);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Watch for status filter changes and reload leads
+  // Watch for status/product filter changes and reload leads
   useEffect(() => {
     // Only trigger if component has loaded (not on initial mount)
-    if (leads.length > 0 || selectedStatus.length > 0) {
+    if (leads.length > 0 || selectedStatus.length > 0 || selectedProducts.length > 0) {
       loadLeads(1, pagination.limit);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedStatus]);
+  }, [selectedStatus, selectedProducts]);
 
   const statusMenu = {
     items: [
@@ -461,17 +520,24 @@ const LeadTable = () => {
     }));
   }, [leads]);
 
+  // Row selection config
+  const rowSelection = {
+    selectedRowKeys,
+    onChange: (keys: React.Key[]) => setSelectedRowKeys(keys),
+  }
+
   return (
     <div className="p-6 bg-white rounded-xl shadow">
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex justify-between items-center mb-4">
         <h2 className="text-xl font-bold text-gray-800">Lead Deposition</h2>
-        <div className="flex space-x-2">
+        <div className="flex space-x-2 flex-wrap items-center">
           <Input
             placeholder="Search leads..."
             prefix={<SearchOutlined />}
-            className="w-64 rounded-lg"
+            className="w-52 rounded-lg"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
+            onPressEnter={() => loadLeads(1)}
           />
           <Dropdown
             menu={statusMenu as any}
@@ -484,6 +550,18 @@ const LeadTable = () => {
               Status: {selectedStatus.length > 0 ? (selectedStatus[0] === 'followup' ? 'Follow-up' : selectedStatus[0].charAt(0).toUpperCase() + selectedStatus[0].slice(1)) : 'All'} <DownOutlined />
             </Button>
           </Dropdown>
+          <Select
+            mode="multiple"
+            maxTagCount="responsive"
+            placeholder="Product Filter"
+            allowClear
+            showSearch
+            optionFilterProp="label"
+            style={{ minWidth: 160, maxWidth: 300 }}
+            value={selectedProducts}
+            onChange={(v) => setSelectedProducts(v || [])}
+            options={allProducts.map(p => ({ label: p, value: p }))}
+          />
           <Button onClick={openCreate}>New Lead</Button>
           <Button loading={bulkUploading} onClick={() => document.getElementById('lead-csv-input')?.click()}>Bulk Upload CSV</Button>
           <input id="lead-csv-input" key={fileInputKey} type="file" accept=".csv" className="hidden" onChange={(e) => {
@@ -493,7 +571,31 @@ const LeadTable = () => {
         </div>
       </div>
 
+      {/* Bulk Compose Bar */}
+      <div className="flex items-center gap-3 mb-4">
+        <Button
+          type="primary"
+          icon={<MailOutlined />}
+          loading={bulkComposeLoading}
+          onClick={handleBulkCompose}
+        >
+          Compose to All Filtered ({pagination.total})
+        </Button>
+        {selectedRowKeys.length > 0 && (
+          <Button
+            icon={<MailOutlined />}
+            onClick={handleComposeSelected}
+          >
+            Compose to Selected ({selectedRowKeys.length})
+          </Button>
+        )}
+        {selectedRowKeys.length > 0 && (
+          <span className="text-sm text-gray-500">{selectedRowKeys.length} selected</span>
+        )}
+      </div>
+
       <Table
+        rowSelection={rowSelection}
         columns={columns}
         dataSource={tableData}
         bordered
@@ -584,6 +686,7 @@ const LeadTable = () => {
             <Input placeholder="Enter customer name" />
           </Form.Item>
           <Form.Item label="Email" name="email" rules={[
+            { required: true, message: 'Please input email address' },
             { type: 'email', message: 'Please enter a valid email' },
             ({ getFieldValue }) => ({
               validator(_, value) {

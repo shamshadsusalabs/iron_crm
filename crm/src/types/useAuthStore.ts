@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import axios from 'axios'
 
 // Keep in sync with axiosInstance baseURL
-const BASE_URL = 'http://localhost:5000/api/admin'
+const BASE_URL = `${import.meta.env.VITE_API_URL ?? 'https://crmbackend-469714.el.r.appspot.com'}/api/admin`
 
 interface AuthState {
   accessToken: string | null

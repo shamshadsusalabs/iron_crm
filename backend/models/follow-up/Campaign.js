@@ -54,15 +54,15 @@ const campaignSchema = new mongoose.Schema(
         {
           delayHours: { type: Number },
           templateId: { type: mongoose.Schema.Types.ObjectId, ref: "Template" },
-          contentType: { 
-            type: String, 
-            enum: ["template", "catalog"], 
-            default: "template" 
+          contentType: {
+            type: String,
+            enum: ["template", "catalog"],
+            default: "template"
           },
           // For catalog-based steps
-          catalogItems: [{ 
-            type: mongoose.Schema.Types.ObjectId, 
-            ref: "CatalogItem" 
+          catalogItems: [{
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "CatalogItem"
           }],
           subject: { type: String }, // Required for catalog steps
           conditions: {
@@ -94,6 +94,27 @@ const campaignSchema = new mongoose.Schema(
       bounced: { type: Number, default: 0 },
       unsubscribed: { type: Number, default: 0 },
     },
+
+    // Restart functionality fields
+    restartCount: { type: Number, default: 0 },
+    lastRestartedAt: { type: Date },
+    startedAt: { type: Date },
+    completedAt: { type: Date },
+
+    // History of each campaign run
+    runHistory: [{
+      runNumber: { type: Number },
+      startedAt: { type: Date },
+      completedAt: { type: Date },
+      stats: {
+        totalSent: { type: Number, default: 0 },
+        opened: { type: Number, default: 0 },
+        clicked: { type: Number, default: 0 },
+        bounced: { type: Number, default: 0 },
+        unsubscribed: { type: Number, default: 0 },
+      }
+    }],
+
     processingLock: { type: Date },
   },
   {

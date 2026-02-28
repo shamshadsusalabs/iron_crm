@@ -9,6 +9,9 @@ export default function CatalogCategories() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
+  // Search State
+  const [search, setSearch] = useState('')
+
   // Modal State
   const [open, setOpen] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -72,6 +75,12 @@ export default function CatalogCategories() {
     }
   }
 
+  // Filter categories
+  const filteredCategories = categories.filter(cat =>
+    cat.name.toLowerCase().includes(search.toLowerCase()) ||
+    (cat.description && cat.description.toLowerCase().includes(search.toLowerCase()))
+  )
+
   return (
     <div className="p-4">
       <div className="flex items-center justify-between mb-4">
@@ -85,6 +94,16 @@ export default function CatalogCategories() {
             Add Category
           </button>
         </div>
+      </div>
+
+      <div className="mb-4">
+        <input
+          type="text"
+          placeholder="Search categories..."
+          className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
       </div>
 
       {error && <div className="mb-3 text-sm text-red-600">{error}</div>}
@@ -103,7 +122,7 @@ export default function CatalogCategories() {
               </tr>
             </thead>
             <tbody>
-              {categories.map((cat) => (
+              {filteredCategories.map((cat) => (
                 <tr key={cat._id} className="border-t">
                   <td className="p-2 font-medium">{cat.name}</td>
                   <td className="p-2 text-gray-700">{cat.description || '-'}</td>
@@ -126,9 +145,11 @@ export default function CatalogCategories() {
                   </td>
                 </tr>
               ))}
-              {categories.length === 0 && (
+              {filteredCategories.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="p-4 text-center text-gray-500">No categories found</td>
+                  <td colSpan={4} className="p-4 text-center text-gray-500">
+                    {search ? 'No matching categories found' : 'No categories found'}
+                  </td>
                 </tr>
               )}
             </tbody>

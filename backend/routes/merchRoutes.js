@@ -22,6 +22,7 @@ router.post('/logout', verifyMerchAccessToken, logout)
 
 // Leads CRUD (Merchandiser only)
 router.get('/leads', verifyMerchAccessToken, leadCtrl.listLeads)
+router.get('/leads/emails', verifyMerchAccessToken, leadCtrl.getFilteredEmails) // Bulk compose - fetch filtered emails only
 router.post('/leads', verifyMerchAccessToken, leadCtrl.createLead)
 router.get('/leads/:id', verifyMerchAccessToken, leadCtrl.getLeadById)
 router.put('/leads/:id', verifyMerchAccessToken, leadCtrl.updateLead)

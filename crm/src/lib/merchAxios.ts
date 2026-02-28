@@ -2,7 +2,7 @@ import axios from 'axios'
 import useMerchAuthStore from '@/store/useMerchAuthStore'
 
 const merchAxios = axios.create({
-  baseURL: 'http://localhost:5000/api/merch',
+  baseURL: `${import.meta.env.VITE_API_URL ?? 'https://crmbackend-469714.el.r.appspot.com'}/api/merch`,
   withCredentials: true,
 })
 

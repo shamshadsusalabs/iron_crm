@@ -8,7 +8,7 @@ const getAdminId = (): string => {
   return ''
 }
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000'
+const API_URL = import.meta.env.VITE_API_URL || 'https://crmbackend-469714.el.r.appspot.com'
 
 const getMerchToken = (): string => {
   if (typeof window !== 'undefined') {

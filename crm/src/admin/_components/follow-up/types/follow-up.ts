@@ -42,6 +42,21 @@ export interface Campaign {
     bounced: number
     unsubscribed: number
   }
+  // Restart functionality fields
+  restartCount?: number
+  lastRestartedAt?: string | Date
+  runHistory?: Array<{
+    runNumber: number
+    startedAt?: string | Date
+    completedAt?: string | Date
+    stats: {
+      totalSent: number
+      opened: number
+      clicked: number
+      bounced: number
+      unsubscribed: number
+    }
+  }>
   userId: string
   createdAt: string | Date
   updatedAt: string | Date
@@ -211,7 +226,7 @@ export interface CreateContactListData {
   description?: string
   contacts?: string[]
   totalContacts?: number
-} 
+}
 
 // Additional types used by email follow-up API
 export interface FollowUpSequence {

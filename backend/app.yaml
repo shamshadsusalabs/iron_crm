@@ -1,4 +1,4 @@
-runtime: nodejs20
+runtime: nodejs22
 env: standard
 service: default
 
@@ -11,8 +11,9 @@ env_variables:
   FRONTEND_URL: "https://crmfrontend-dbc12.web.app"
   CLIENT_URL: "https://crmfrontend-dbc12.web.app"
   EMAIL_USER: "crm@refratexindia.net"
-  EMAIL_PASS: "nolk qsun sbqy gihd"
+  EMAIL_PASS: "xdgb fcfa vwep fcfu"
   CLOUDINARY_CLOUD_NAME: "dr9o0toid"
   CLOUDINARY_API_KEY: "972484688775781"
   CLOUDINARY_API_SECRET: "dA6Ps7C0XlSOzGpUveuIbd9p6vw"
   EMAIL_CRED_KEY: "sdajbcugducigdebvckhvdvfygqwuy126rr"
+  RECVED_MAIL: "sales@refratexindia.net"

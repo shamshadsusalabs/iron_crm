@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Card, Row, Col, Table, Button, Tag, Typography, Modal, Form, Input, Select, Space, Tooltip, Popconfirm, Upload, message, Statistic } from 'antd'
 import {
   SearchOutlined,
@@ -55,17 +55,14 @@ export default function FollowUpContacts() {
     withProducts: 0
   }
 
-  // Filter contacts based on search query
-  const filteredContacts = contacts.filter(contact => {
-    const search = searchQuery.toLowerCase()
-    return (
-      (contact.firstName && contact.firstName.toLowerCase().includes(search)) ||
-      (contact.lastName && contact.lastName.toLowerCase().includes(search)) ||
-      (contact.email && contact.email.toLowerCase().includes(search)) ||
-      (contact.company && contact.company.toLowerCase().includes(search)) ||
-      (contact.phone && contact.phone.toLowerCase().includes(search))
-    )
-  })
+  // Re-fetch contacts from server when search query changes
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      loadContacts(1, contactsPagination?.limit || 200, searchQuery);
+    }, 500); // 500ms debounce
+    return () => clearTimeout(handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchQuery]);
 
   // Contact table columns
   const columns = [
@@ -456,14 +453,14 @@ export default function FollowUpContacts() {
       <Card>
         <Table
           columns={columns}
-          dataSource={filteredContacts}
+          dataSource={contacts}
           loading={contactsLoading}
           rowKey="_id"
           pagination={{
             current: contactsPagination?.page || 1,
             pageSize: contactsPagination?.limit || 200,
             total: contactsPagination?.total || 0,
-            onChange: (page, pageSize) => loadContacts(page, pageSize),
+            onChange: (page, pageSize) => loadContacts(page, pageSize, searchQuery),
             showSizeChanger: true,
             pageSizeOptions: ['50', '100', '200', '500'],
           }}

@@ -14,6 +14,19 @@ export default function CatalogItems() {
   const [page, setPage] = useState(1)
   const [pagination, setPagination] = useState<{ total: number; pages: number; page: number; limit: number } | null>(null)
 
+  // Search State
+  const [search, setSearch] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+
+  // Debounce search
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearch(search)
+      setPage(1)
+    }, 500)
+    return () => clearTimeout(handler)
+  }, [search])
+
   // Create Form State
   const [open, setOpen] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -70,7 +83,7 @@ export default function CatalogItems() {
     async function loadItems() {
       try {
         setLoading(true)
-        const res = await catalogApi.getItems({ page, limit: 200 })
+        const res = await catalogApi.getItems({ page, limit: 200, search: debouncedSearch })
 
         if (!mounted) return
         setItems(res.items)
@@ -86,7 +99,7 @@ export default function CatalogItems() {
     return () => {
       mounted = false
     }
-  }, [page])
+  }, [page, debouncedSearch])
 
   // Helper to find or create category ID from name
   const getCategoryIdFromName = async (name: string): Promise<string | null> => {
@@ -121,6 +134,16 @@ export default function CatalogItems() {
             Add Item
           </button>
         </div>
+      </div>
+
+      <div className="mb-4">
+        <input
+          type="text"
+          placeholder="Search items by title or category..."
+          className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
       </div>
 
       {error && (
@@ -407,7 +430,9 @@ export default function CatalogItems() {
               ))}
               {items.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="p-4 text-center text-gray-500">No items found</td>
+                  <td colSpan={7} className="p-4 text-center text-gray-500">
+                    {debouncedSearch ? 'No matching items found' : 'No items found'}
+                  </td>
                 </tr>
               )}
             </tbody>

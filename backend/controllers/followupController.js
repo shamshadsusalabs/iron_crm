@@ -399,6 +399,150 @@ async function startCampaign(req, res) {
   }
 }
 
+// Restart a completed/paused campaign
+async function restartCampaign(req, res) {
+  try {
+    const { userId } = getAuth(req)
+    const { campaignId } = req.params
+    const {
+      resetStats = true,        // Reset stats to 0 or keep existing
+      autoStart = false,        // Automatically start after restart
+      updateSettings = null     // Optional: new sequence/contacts settings
+    } = req.body
+
+    logger.info(`Controller: Restarting campaign ${campaignId} for user ${userId}`)
+
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        message: "User ID is required"
+      })
+    }
+
+    if (!campaignId) {
+      return res.status(400).json({
+        success: false,
+        message: "Campaign ID is required"
+      })
+    }
+
+    // Get the campaign
+    const Campaign = require('../models/follow-up/Campaign')
+    const campaign = await Campaign.findOne({ _id: campaignId, userId })
+
+    if (!campaign) {
+      return res.status(404).json({
+        success: false,
+        message: "Campaign not found"
+      })
+    }
+
+    // Check if campaign can be restarted (only completed or paused)
+    if (!['completed', 'paused', 'sent'].includes(campaign.status)) {
+      return res.status(400).json({
+        success: false,
+        message: `Campaign cannot be restarted. Current status: ${campaign.status}. Only completed, sent, or paused campaigns can be restarted.`
+      })
+    }
+
+    // Archive current run to runHistory
+    const currentRunNumber = (campaign.restartCount || 0) + 1
+    const runHistoryEntry = {
+      runNumber: currentRunNumber,
+      startedAt: campaign.startedAt || campaign.createdAt,
+      completedAt: campaign.completedAt || new Date(),
+      stats: {
+        totalSent: campaign.stats?.totalSent || 0,
+        opened: campaign.stats?.opened || 0,
+        clicked: campaign.stats?.clicked || 0,
+        bounced: campaign.stats?.bounced || 0,
+        unsubscribed: campaign.stats?.unsubscribed || 0,
+      }
+    }
+
+    // Initialize runHistory if not exists
+    if (!campaign.runHistory) {
+      campaign.runHistory = []
+    }
+    campaign.runHistory.push(runHistoryEntry)
+
+    // Reset campaign state
+    campaign.status = 'draft'
+    campaign.restartCount = currentRunNumber
+    campaign.lastRestartedAt = new Date()
+    campaign.startedAt = null
+    campaign.completedAt = null
+    campaign.sentAt = null
+
+    // Reset stats if requested
+    if (resetStats) {
+      campaign.stats = {
+        totalSent: 0,
+        opened: 0,
+        clicked: 0,
+        bounced: 0,
+        unsubscribed: 0,
+      }
+    }
+
+    // Apply new settings if provided
+    if (updateSettings) {
+      if (updateSettings.sequence) {
+        campaign.sequence = updateSettings.sequence
+      }
+      if (updateSettings.contacts) {
+        campaign.contacts = updateSettings.contacts
+      }
+      if (updateSettings.contactLists) {
+        campaign.contactLists = updateSettings.contactLists
+      }
+      if (updateSettings.template) {
+        campaign.template = updateSettings.template
+      }
+    }
+
+    await campaign.save()
+
+    logger.info(`Campaign ${campaignId} restarted successfully. Run #${currentRunNumber + 1}`)
+
+    // Auto-start if requested
+    if (autoStart) {
+      try {
+        const startedCampaign = await followupService.manualStartCampaign(campaignId, userId)
+        return res.json({
+          success: true,
+          message: `Campaign restarted and started successfully. This is run #${currentRunNumber + 1}`,
+          data: startedCampaign
+        })
+      } catch (startError) {
+        logger.error('Error auto-starting restarted campaign:', startError)
+        return res.json({
+          success: true,
+          message: `Campaign restarted but auto-start failed: ${startError.message}. Campaign is in draft state.`,
+          data: campaign
+        })
+      }
+    }
+
+    res.json({
+      success: true,
+      message: `Campaign restarted successfully. This is run #${currentRunNumber + 1}. Status is now 'draft'. Click Start to begin sending.`,
+      data: campaign
+    })
+  } catch (error) {
+    logger.error("Error restarting campaign:", {
+      error: error.message,
+      stack: error.stack,
+      campaignId: req.params.campaignId
+    })
+    res.status(500).json({
+      success: false,
+      message: "Failed to restart campaign",
+      error: error.message
+    })
+  }
+}
+
 // Contact Controllers
 async function createContact(req, res) {
   try {
@@ -897,6 +1041,24 @@ async function getCampaignStats(req, res) {
   }
 }
 
+async function getDashboardStats(req, res) {
+  try {
+    const { userId } = getAuth(req)
+    const stats = await followupService.getDashboardStats(userId)
+    res.json({
+      success: true,
+      data: stats
+    })
+  } catch (error) {
+    logger.error("Error fetching dashboard stats:", error)
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch dashboard stats",
+      error: error.message
+    })
+  }
+}
+
 // Bulk Operations
 async function bulkCreateContacts(req, res) {
   try {
@@ -974,6 +1136,9 @@ async function bulkAddContactsToList(req, res) {
       { $addToSet: { listIds: listId } }
     )
 
+    // Sync counts automatically to prevent mismatch in list totals
+    await followupService.syncContactListCounts(userId)
+
     res.json({
       success: true,
       message: "Contacts added to list successfully"
@@ -1015,6 +1180,9 @@ async function bulkRemoveContactsFromList(req, res) {
       { _id: { $in: contactIds }, userId },
       { $pull: { listIds: listId } }
     )
+
+    // Sync counts automatically to prevent mismatch in list totals
+    await followupService.syncContactListCounts(userId)
 
     res.json({
       success: true,
@@ -1125,6 +1293,7 @@ module.exports = {
   updateCampaign,
   deleteCampaign,
   startCampaign,
+  restartCampaign,
   getSequenceStatus,
   triggerSequenceCompletion,
 
@@ -1158,6 +1327,7 @@ module.exports = {
 
   // Analytics Controllers
   getCampaignStats,
+  getDashboardStats,
 
   // Bulk Operations
   bulkCreateContacts,
