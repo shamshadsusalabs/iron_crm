@@ -25,7 +25,7 @@ const { Title, Text } = Typography
 const { Option } = Select
 const { TextArea } = Input
 
-const API_BASE = import.meta.env.VITE_API_URL ?? 'https://crmbackend-469714.el.r.appspot.com'
+const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:5000'
 
 // Helpers to handle IST (Asia/Kolkata) timezone consistently
 // 1) Format a Date/ISO string to datetime-local (YYYY-MM-DDTHH:mm) in IST

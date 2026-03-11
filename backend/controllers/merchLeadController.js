@@ -155,6 +155,20 @@ async function deleteLead(req, res) {
 }
 
 // Get filtered emails only (lightweight - for bulk compose)
+// Get all unique products across all leads for this user
+async function getAllUniqueProducts(req, res) {
+  try {
+    const userId = req.userId
+    const products = await Lead.distinct('interestedProducts', { createdBy: userId })
+    // Sort and filter out empty strings
+    const sortedProducts = products.filter(Boolean).sort()
+    return res.json({ success: true, data: sortedProducts })
+  } catch (error) {
+    logger.error('Error fetching unique products:', error)
+    return res.status(500).json({ success: false, message: 'Failed to fetch products', error: error.message })
+  }
+}
+
 async function getFilteredEmails(req, res) {
   try {
     const userId = req.userId
@@ -206,4 +220,5 @@ module.exports = {
   updateLead,
   deleteLead,
   getFilteredEmails,
+  getAllUniqueProducts,
 }

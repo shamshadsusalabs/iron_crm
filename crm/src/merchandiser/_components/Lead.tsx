@@ -56,15 +56,21 @@ const LeadTable = () => {
     order: 'ascend'
   })
 
-  // Collect all unique products from loaded leads for filter dropdown and keep them across filter runs
+  // Collect all unique products from backend for filter dropdown
   const [allProducts, setAllProducts] = useState<string[]>([]);
+  
+  const loadProducts = async () => {
+    try {
+      const products = await leadApi.getUniqueProducts();
+      setAllProducts(products);
+    } catch (e) {
+      console.error('Failed to load products', e);
+    }
+  };
+
   useEffect(() => {
-    setAllProducts(prev => {
-      const set = new Set(prev);
-      leads.forEach(l => (l as any).interestedProducts?.forEach((p: string) => set.add(p)));
-      return Array.from(set).sort();
-    });
-  }, [leads]);
+    loadProducts();
+  }, []);
 
   const openCreate = () => {
     setEditing(null);
@@ -201,7 +207,8 @@ const LeadTable = () => {
       setBulkResult(result)
       setBulkModalOpen(true)
       message.success(`Bulk upload completed: ${success}/${rows.length} created`)
-      // reload list
+      // reload list and products
+      loadProducts()
       loadLeads(pagination.page, pagination.limit)
     } catch (e: any) {
       message.error(e?.message || 'Failed to process CSV')
@@ -463,6 +470,8 @@ const LeadTable = () => {
                   try {
                     await leadApi.remove(r.key)
                     message.success('Lead deleted')
+                    // Update products list
+                    loadProducts()
                     // Remove the lead from local state instead of reloading entire table
                     setLeads(prevLeads => prevLeads.filter(lead => lead._id !== r.key))
                     // Update pagination total count
@@ -662,6 +671,8 @@ const LeadTable = () => {
             if (editing) {
               const updatedLead = await leadApi.update(editing._id, payload)
               message.success('Lead updated')
+              // Update products list
+              loadProducts()
               // Update the lead in local state without reloading
               setLeads(prevLeads =>
                 prevLeads.map(lead =>
@@ -674,6 +685,8 @@ const LeadTable = () => {
             } else {
               await leadApi.create(payload)
               message.success('Lead created')
+              // Update products list
+              loadProducts()
               // For new leads, reload but maintain current page
               loadLeads(pagination.page, pagination.limit)
               setIsModalOpen(false)

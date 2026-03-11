@@ -32,7 +32,7 @@ const getAuthHeaders = (): Record<string, string> => {
 }
 
 // Use public follow-up base (works for both admin and merch)
-const FOLLOWUP_BASE = `${import.meta.env.VITE_API_URL ?? "https://crmbackend-469714.el.r.appspot.com"}/api/follow-up`
+const FOLLOWUP_BASE = `${import.meta.env.VITE_API_URL ?? "http://localhost:5000"}/api/follow-up`
 
 // Campaign API
 export const campaignApi = {
@@ -328,7 +328,7 @@ export const catalogApi = {
     categoryId = "",
     status = "active"
   ): Promise<{ items: any[]; pagination: PaginationInfo }> => {
-    const response = await axiosInstance.get<ApiResponse<any[]>>(`${import.meta.env.VITE_API_URL ?? "https://crmbackend-469714.el.r.appspot.com"}/api/catalog/items`, {
+    const response = await axiosInstance.get<ApiResponse<any[]>>(`${import.meta.env.VITE_API_URL ?? "http://localhost:5000"}/api/catalog/items`, {
       params: { page, limit, search, categoryId, status },
       headers: { ...getAuthHeaders() },
     })
@@ -339,7 +339,7 @@ export const catalogApi = {
   },
 
   getCategories: async (): Promise<any[]> => {
-    const response = await axiosInstance.get<ApiResponse<any[]>>(`${import.meta.env.VITE_API_URL ?? "https://crmbackend-469714.el.r.appspot.com"}/api/catalog/categories`, {
+    const response = await axiosInstance.get<ApiResponse<any[]>>(`${import.meta.env.VITE_API_URL ?? "http://localhost:5000"}/api/catalog/categories`, {
       headers: { ...getAuthHeaders() },
     })
     return response.data.data

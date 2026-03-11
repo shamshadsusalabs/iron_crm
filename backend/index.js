@@ -23,7 +23,7 @@ const PORT = process.env.PORT || 5000;
 
 // CORS config
 const allowedOrigins = [
-  process.env.FRONTEND_URL || 'https://crmfrontend-dbc12.web.app',
+  process.env.FRONTEND_URL || 'http://localhost:5173',
   'https://crmfrontend-dbc12.web.app',
   'https://crmfrontend-dbc12.firebaseapp.com'
 ];

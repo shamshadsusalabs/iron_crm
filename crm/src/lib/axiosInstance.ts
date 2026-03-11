@@ -1,7 +1,7 @@
 import axios from "axios"
 import useAuthStore from "../store/useAuthStore"
 
-const baseURL = `${import.meta.env.VITE_API_URL ?? "https://crmbackend-469714.el.r.appspot.com"}/api/admin`
+const baseURL = `${import.meta.env.VITE_API_URL ?? "http://localhost:5000"}/api/admin`
 
 const axiosInstance = axios.create({
   baseURL,

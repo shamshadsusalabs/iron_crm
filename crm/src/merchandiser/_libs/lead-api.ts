@@ -44,4 +44,8 @@ export const leadApi = {
     const { data } = await merchAxios.get('/leads/emails', { params })
     return data as { emails: string[]; total: number; capped: boolean }
   },
+  async getUniqueProducts() {
+    const { data } = await merchAxios.get('/leads/products')
+    return data.data as string[]
+  }
 }
